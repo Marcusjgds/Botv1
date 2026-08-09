@@ -62,4 +62,5 @@ http.createServer((req, res) => {
   res.end('Le bot est en ligne.');
 }).listen(PORT, () => console.log(`Serveur HTTP keep-alive sur le port ${PORT}`));
 
-process.on('unhandledRejection', (err) => console.error('Erreur non gérée :', err));
+process.on('unhandledRejection', (err) => console.error('Erreur non gérée (promesse) :', err));
+process.on('uncaughtException', (err) => console.error('Erreur non gérée (exception) :', err));

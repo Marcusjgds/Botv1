@@ -1,5 +1,5 @@
 const { getGuild } = require('../utils/db');
-const { replacePlaceholders, baseEmbed } = require('../utils/helpers');
+const { replacePlaceholders, baseEmbed, safeSetImage } = require('../utils/helpers');
 
 module.exports = {
   name: 'guildMemberAdd',
@@ -14,7 +14,7 @@ module.exports = {
       .setAuthor({ name: `Bienvenue sur ${member.guild.name} !`, iconURL: member.guild.iconURL() })
       .setDescription(replacePlaceholders(w.message, { user: member.user, guild: member.guild }))
       .setThumbnail(member.user.displayAvatarURL({ size: 256 }));
-    if (w.image) embed.setImage(w.image);
+    safeSetImage(embed, w.image);
 
     channel.send({ content: `${member}`, embeds: [embed] }).catch(() => {});
   },

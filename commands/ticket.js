@@ -1,6 +1,6 @@
 const { SlashCommandBuilder, PermissionFlagsBits, ChannelType } = require('discord.js');
 const { updateGuild } = require('../utils/db');
-const { baseEmbed } = require('../utils/helpers');
+const { baseEmbed, safeSetImage } = require('../utils/helpers');
 const { panelRow } = require('../utils/tickets');
 
 module.exports = {
@@ -39,7 +39,7 @@ module.exports = {
       const description = interaction.options.getString('description') || 'Clique sur le bouton ci-dessous pour ouvrir un ticket et contacter le staff.';
       const image = interaction.options.getString('image');
       const embed = baseEmbed(0x5865f2).setTitle(titre).setDescription(description);
-      if (image) embed.setImage(image);
+      safeSetImage(embed, image);
       await interaction.channel.send({ embeds: [embed], components: [panelRow()] });
       updateGuild(interaction.guild.id, (g) => { g.tickets.panelChannelId = interaction.channel.id; });
       return interaction.reply({ content: '✅ Panneau envoyé.', ephemeral: true });

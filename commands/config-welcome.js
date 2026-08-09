@@ -1,6 +1,6 @@
 const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
 const { updateGuild, getGuild } = require('../utils/db');
-const { replacePlaceholders, baseEmbed } = require('../utils/helpers');
+const { replacePlaceholders, baseEmbed, safeSetImage } = require('../utils/helpers');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -11,7 +11,8 @@ module.exports = {
       .setDescription('Configure le message de bienvenue')
       .addChannelOption(o => o.setName('salon').setDescription('Salon de bienvenue').setRequired(true))
       .addStringOption(o => o.setName('message').setDescription('Message (placeholders : {user} {username} {server} {count})').setRequired(false))
-      .addStringOption(o => o.setName('image').setDescription("URL de l'image (bannière)").setRequired(false)))
+      .addAttachmentOption(o => o.setName('image').setDescription("Envoie directement l'image (bannière) depuis tes fichiers").setRequired(false))
+      .addStringOption(o => o.setName('image_url').setDescription("Ou colle une URL d'image au lieu d'un fichier").setRequired(false)))
     .addSubcommand(sc => sc.setName('leave')
       .setDescription("Configure le message d'au revoir")
       .addChannelOption(o => o.setName('salon').setDescription("Salon d'au revoir").setRequired(true))
@@ -26,14 +27,35 @@ module.exports = {
     if (sub === 'set') {
       const channel = interaction.options.getChannel('salon');
       const message = interaction.options.getString('message');
-      const image = interaction.options.getString('image');
+      const imageAttachment = interaction.options.getAttachment('image');
+      const imageUrl = interaction.options.getString('image_url');
+
+      if (imageAttachment && imageAttachment.contentType && !imageAttachment.contentType.startsWith('image/')) {
+        return interaction.reply({ content: `❌ Le fichier "${imageAttachment.name}" n'est pas une image.`, ephemeral: true });
+      }
+
+      await interaction.deferReply({ ephemeral: true });
+
+      let finalImageUrl = null;
+      if (imageAttachment) {
+        // On republie le fichier dans le salon de bienvenue pour obtenir une URL permanente réutilisable
+        try {
+          const stored = await channel.send({ content: '🖼️ Image de bienvenue enregistrée (ce message sert de stockage, tu peux l\'épingler ou l\'ignorer).', files: [imageAttachment.url] });
+          finalImageUrl = stored.attachments.first()?.url || null;
+        } catch (e) {
+          return interaction.editReply({ content: "❌ Je n'ai pas pu enregistrer l'image (permissions manquantes dans ce salon ?)." });
+        }
+      } else if (imageUrl) {
+        finalImageUrl = imageUrl.trim();
+      }
+
       updateGuild(interaction.guild.id, (g) => {
         g.welcome.enabled = true;
         g.welcome.channelId = channel.id;
         if (message) g.welcome.message = message;
-        if (image) g.welcome.image = image;
+        if (finalImageUrl) g.welcome.image = finalImageUrl;
       });
-      return interaction.reply({ content: `✅ Message de bienvenue configuré dans ${channel}.`, ephemeral: true });
+      return interaction.editReply({ content: `✅ Message de bienvenue configuré dans ${channel}.` });
     }
 
     if (sub === 'leave') {
@@ -54,7 +76,7 @@ module.exports = {
         .setAuthor({ name: `Bienvenue sur ${interaction.guild.name} !` })
         .setDescription(replacePlaceholders(w.message, { user: interaction.user, guild: interaction.guild }))
         .setThumbnail(interaction.user.displayAvatarURL({ size: 256 }));
-      if (w.image) embed.setImage(w.image);
+      safeSetImage(embed, w.image);
       return interaction.reply({ embeds: [embed] });
     }
 

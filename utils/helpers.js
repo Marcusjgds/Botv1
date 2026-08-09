@@ -28,4 +28,21 @@ function formatDuration(ms) {
   return `${hours}h${minutes.toString().padStart(2, '0')}`;
 }
 
-module.exports = { isStaff, replacePlaceholders, baseEmbed, formatDuration };
+function isValidImageUrl(url) {
+  if (!url || typeof url !== 'string') return false;
+  return /^https?:\/\//i.test(url.trim());
+}
+
+// Applique une image à un embed seulement si l'URL est valide (http/https),
+// pour éviter tout crash si quelqu'un colle un chemin local (file:///...) ou du texte invalide.
+function safeSetImage(embed, url) {
+  if (isValidImageUrl(url)) embed.setImage(url.trim());
+  return embed;
+}
+
+function safeSetThumbnail(embed, url) {
+  if (isValidImageUrl(url)) embed.setThumbnail(url.trim());
+  return embed;
+}
+
+module.exports = { isStaff, replacePlaceholders, baseEmbed, formatDuration, isValidImageUrl, safeSetImage, safeSetThumbnail };

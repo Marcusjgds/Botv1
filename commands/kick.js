@@ -1,28 +1,61 @@
-const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
-const { baseEmbed } = require('../utils/helpers');
+// commands/kick.js
+const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require("discord.js");
+const { isStaff } = require("../utils/permissions");
+const { scpEmbed } = require("../utils/scpEmbed");
 
 module.exports = {
-  data: new SlashCommandBuilder()
-    .setName('kick')
-    .setDescription('Expulse un membre')
-    .setDefaultMemberPermissions(PermissionFlagsBits.KickMembers)
-    .addUserOption(o => o.setName('membre').setDescription('Membre à expulser').setRequired(true))
-    .addStringOption(o => o.setName('raison').setDescription('Raison').setRequired(false)),
-  async execute(interaction) {
-    const user = interaction.options.getUser('membre');
-    const raison = interaction.options.getString('raison') || 'Aucune raison fournie';
-    const member = await interaction.guild.members.fetch(user.id).catch(() => null);
-    if (!member) return interaction.reply({ content: 'Membre introuvable.', ephemeral: true });
-    if (!member.kickable) return interaction.reply({ content: "Je ne peux pas expulser ce membre (rôle trop haut ?).", ephemeral: true });
+	data: new SlashCommandBuilder()
+		.setName("kick")
+		.setDescription("Exclut un membre du serveur")
+		.setDefaultMemberPermissions(PermissionFlagsBits.KickMembers)
+		.addUserOption((o) => o.setName("membre").setDescription("Membre à exclure").setRequired(true))
+		.addStringOption((o) => o.setName("raison").setDescription("Raison de l'exclusion").setRequired(false)),
 
-    await user.send(`Tu as été expulsé de **${interaction.guild.name}**.\nRaison : ${raison}`).catch(() => {});
-    await member.kick(raison);
+	async execute(interaction) {
+		if (!isStaff(interaction.member)) {
+			return interaction.reply({
+				content: "🔒 Vous n'êtes pas autorisé à utiliser cette commande.",
+				flags: MessageFlags.Ephemeral,
+			});
+		}
 
-    const embed = baseEmbed(0xed4245).setTitle('👢 Membre expulsé').addFields(
-      { name: 'Membre', value: `${user.tag}`, inline: true },
-      { name: 'Modérateur', value: `${interaction.user}`, inline: true },
-      { name: 'Raison', value: raison },
-    );
-    return interaction.reply({ embeds: [embed] });
-  },
+		const membre = interaction.options.getMember("membre");
+		const raison = interaction.options.getString("raison") ?? "Aucune raison fournie";
+
+		if (!membre) {
+			return interaction.reply({ content: "❌ Membre introuvable sur ce serveur.", flags: MessageFlags.Ephemeral });
+		}
+		if (!membre.kickable) {
+			return interaction.reply({
+				content: "❌ Je ne peux pas exclure ce membre (rôle trop élevé ou permissions insuffisantes).",
+				flags: MessageFlags.Ephemeral,
+			});
+		}
+
+		try {
+			await membre.send({
+				embeds: [
+					scpEmbed({
+						title: "👢 Vous avez été exclu",
+						description: `Du serveur **${interaction.guild.name}**\n**Raison :** ${raison}`,
+						color: "danger",
+					}),
+				],
+			});
+		} catch {
+			// DM fermés
+		}
+
+		await membre.kick(raison);
+
+		return interaction.reply({
+			embeds: [
+				scpEmbed({
+					title: "👢 Membre exclu",
+					description: `${membre.user.tag} a été exclu.\n**Raison :** ${raison}\n**Modérateur :** ${interaction.user}`,
+					color: "danger",
+				}),
+			],
+		});
+	},
 };

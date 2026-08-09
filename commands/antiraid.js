@@ -1,64 +1,85 @@
-const { SlashCommandBuilder, PermissionFlagsBits, ChannelType } = require('discord.js');
-const { updateGuild, getGuild } = require('../utils/db');
-const { baseEmbed } = require('../utils/helpers');
+// commands/antiraid.js
+const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require("discord.js");
+const { getGuildData, saveGuildData } = require("../utils/db");
+const { isStaff } = require("../utils/permissions");
+const { scpEmbed } = require("../utils/scpEmbed");
 
 module.exports = {
-  data: new SlashCommandBuilder()
-    .setName('antiraid')
-    .setDescription('Configure la protection anti-raid / anti-spam')
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-    .addSubcommand(sc => sc.setName('config')
-      .setDescription('Configure la protection anti-raid')
-      .addChannelOption(o => o.setName('salon_logs').setDescription('Salon des logs anti-raid').addChannelTypes(ChannelType.GuildText).setRequired(true))
-      .addIntegerOption(o => o.setName('max_messages').setDescription('Nombre de messages max avant détection (défaut 5)').setMinValue(2).setMaxValue(30))
-      .addIntegerOption(o => o.setName('intervalle_ms').setDescription('Fenêtre de temps en millisecondes (défaut 5000)').setMinValue(1000).setMaxValue(60000))
-      .addIntegerOption(o => o.setName('max_avertissements').setDescription("Nombre d'avertissements avant sanction (défaut 3)").setMinValue(1).setMaxValue(10))
-      .addStringOption(o => o.setName('action').setDescription('Sanction finale').addChoices({ name: 'Expulsion (kick)', value: 'kick' }, { name: 'Bannissement (ban)', value: 'ban' })))
-    .addSubcommand(sc => sc.setName('activer').setDescription('Active la protection'))
-    .addSubcommand(sc => sc.setName('desactiver').setDescription('Désactive la protection'))
-    .addSubcommand(sc => sc.setName('status').setDescription('Affiche la configuration actuelle')),
-  async execute(interaction) {
-    const sub = interaction.options.getSubcommand();
+	data: new SlashCommandBuilder()
+		.setName("antiraid")
+		.setDescription("Protection anti-raid du serveur")
+		.setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+		.addSubcommand((sub) =>
+			sub
+				.setName("config")
+				.setDescription("Configure la détection anti-raid")
+				.addBooleanOption((o) => o.setName("actif").setDescription("Activer/désactiver la protection").setRequired(true))
+				.addIntegerOption((o) =>
+					o.setName("seuil").setDescription("Nombre d'arrivées suspectes déclenchant l'alerte").setMinValue(2).setMaxValue(50)
+				)
+				.addIntegerOption((o) =>
+					o.setName("fenetre").setDescription("Fenêtre de temps en secondes").setMinValue(3).setMaxValue(300)
+				)
+				.addStringOption((o) =>
+					o
+						.setName("action")
+						.setDescription("Action appliquée aux comptes suspects")
+						.addChoices({ name: "Kick", value: "kick" }, { name: "Ban", value: "ban" })
+				)
+		)
+		.addSubcommand((sub) => sub.setName("status").setDescription("Affiche la configuration actuelle")),
 
-    if (sub === 'config') {
-      const logChannel = interaction.options.getChannel('salon_logs');
-      const maxMessages = interaction.options.getInteger('max_messages');
-      const interval = interaction.options.getInteger('intervalle_ms');
-      const maxWarns = interaction.options.getInteger('max_avertissements');
-      const action = interaction.options.getString('action');
-      updateGuild(interaction.guild.id, (g) => {
-        g.antiraid.enabled = true;
-        g.antiraid.logChannelId = logChannel.id;
-        if (maxMessages) g.antiraid.maxMessages = maxMessages;
-        if (interval) g.antiraid.interval = interval;
-        if (maxWarns) g.antiraid.maxWarns = maxWarns;
-        if (action) g.antiraid.action = action;
-      });
-      return interaction.reply({ content: '✅ Protection anti-raid configurée et activée.', ephemeral: true });
-    }
+	async execute(interaction) {
+		if (!isStaff(interaction.member)) {
+			return interaction.reply({
+				content: "🔒 Vous n'êtes pas autorisé à utiliser cette commande.",
+				flags: MessageFlags.Ephemeral,
+			});
+		}
 
-    if (sub === 'activer') {
-      updateGuild(interaction.guild.id, (g) => { g.antiraid.enabled = true; });
-      return interaction.reply({ content: '✅ Protection anti-raid activée.', ephemeral: true });
-    }
+		const data = getGuildData(interaction.guildId);
+		const sub = interaction.options.getSubcommand();
 
-    if (sub === 'desactiver') {
-      updateGuild(interaction.guild.id, (g) => { g.antiraid.enabled = false; });
-      return interaction.reply({ content: '✅ Protection anti-raid désactivée.', ephemeral: true });
-    }
+		if (sub === "config") {
+			data.antiraid.enabled = interaction.options.getBoolean("actif", true);
+			const seuil = interaction.options.getInteger("seuil");
+			const fenetre = interaction.options.getInteger("fenetre");
+			const action = interaction.options.getString("action");
+			if (seuil) data.antiraid.joinThreshold = seuil;
+			if (fenetre) data.antiraid.joinWindowSeconds = fenetre;
+			if (action) data.antiraid.action = action;
+			saveGuildData(interaction.guildId, data);
 
-    if (sub === 'status') {
-      const ar = getGuild(interaction.guild.id).antiraid;
-      const embed = baseEmbed(0x5865f2)
-        .setTitle('🛡️ Statut Anti-Raid')
-        .addFields(
-          { name: 'Activé', value: ar.enabled ? '✅ Oui' : '❌ Non', inline: true },
-          { name: 'Salon de logs', value: ar.logChannelId ? `<#${ar.logChannelId}>` : 'Non défini', inline: true },
-          { name: 'Seuil', value: `${ar.maxMessages} messages / ${ar.interval}ms`, inline: true },
-          { name: 'Avertissements max', value: `${ar.maxWarns}`, inline: true },
-          { name: 'Action finale', value: ar.action === 'ban' ? 'Bannissement' : 'Expulsion', inline: true },
-        );
-      return interaction.reply({ embeds: [embed], ephemeral: true });
-    }
-  },
+			return interaction.reply({
+				embeds: [
+					scpEmbed({
+						title: "🛡️ Anti-Raid mis à jour",
+						description: `État : **${data.antiraid.enabled ? "Activé" : "Désactivé"}**\nSeuil : **${
+							data.antiraid.joinThreshold
+						} arrivées** / **${data.antiraid.joinWindowSeconds}s**\nAction : **${data.antiraid.action.toUpperCase()}**`,
+						color: data.antiraid.enabled ? "success" : "warning",
+					}),
+				],
+				flags: MessageFlags.Ephemeral,
+			});
+		}
+
+		if (sub === "status") {
+			return interaction.reply({
+				embeds: [
+					scpEmbed({
+						title: "🛡️ État de la protection Anti-Raid",
+						fields: [
+							{ name: "Statut", value: data.antiraid.enabled ? "🟢 Activé" : "🔴 Désactivé", inline: true },
+							{ name: "Seuil", value: `${data.antiraid.joinThreshold} arrivées`, inline: true },
+							{ name: "Fenêtre", value: `${data.antiraid.joinWindowSeconds}s`, inline: true },
+							{ name: "Action", value: data.antiraid.action.toUpperCase(), inline: true },
+						],
+						color: "info",
+					}),
+				],
+				flags: MessageFlags.Ephemeral,
+			});
+		}
+	},
 };

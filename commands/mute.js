@@ -1,30 +1,49 @@
-const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
-const { baseEmbed } = require('../utils/helpers');
+// commands/mute.js
+const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require("discord.js");
+const { isStaff } = require("../utils/permissions");
+const { scpEmbed } = require("../utils/scpEmbed");
 
 module.exports = {
-  data: new SlashCommandBuilder()
-    .setName('mute')
-    .setDescription('Rend muet un membre (timeout)')
-    .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
-    .addUserOption(o => o.setName('membre').setDescription('Membre à rendre muet').setRequired(true))
-    .addIntegerOption(o => o.setName('minutes').setDescription('Durée en minutes (max 40320 = 28 jours)').setRequired(true).setMinValue(1).setMaxValue(40320))
-    .addStringOption(o => o.setName('raison').setDescription('Raison').setRequired(false)),
-  async execute(interaction) {
-    const user = interaction.options.getUser('membre');
-    const minutes = interaction.options.getInteger('minutes');
-    const raison = interaction.options.getString('raison') || 'Aucune raison fournie';
+	data: new SlashCommandBuilder()
+		.setName("mute")
+		.setDescription("Réduit un membre au silence (timeout)")
+		.setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
+		.addUserOption((o) => o.setName("membre").setDescription("Membre à mute").setRequired(true))
+		.addIntegerOption((o) => o.setName("minutes").setDescription("Durée en minutes (max 40320 = 28 jours)").setMinValue(1).setMaxValue(40320).setRequired(true))
+		.addStringOption((o) => o.setName("raison").setDescription("Raison du mute").setRequired(false)),
 
-    const member = await interaction.guild.members.fetch(user.id).catch(() => null);
-    if (!member) return interaction.reply({ content: 'Membre introuvable.', ephemeral: true });
-    if (!member.moderatable) return interaction.reply({ content: "Je ne peux pas rendre muet ce membre.", ephemeral: true });
+	async execute(interaction) {
+		if (!isStaff(interaction.member)) {
+			return interaction.reply({
+				content: "🔒 Vous n'êtes pas autorisé à utiliser cette commande.",
+				flags: MessageFlags.Ephemeral,
+			});
+		}
 
-    await member.timeout(minutes * 60 * 1000, raison);
+		const membre = interaction.options.getMember("membre");
+		const minutes = interaction.options.getInteger("minutes", true);
+		const raison = interaction.options.getString("raison") ?? "Aucune raison fournie";
 
-    const embed = baseEmbed(0xfee75c).setTitle('🔇 Membre rendu muet').addFields(
-      { name: 'Membre', value: `${user.tag}`, inline: true },
-      { name: 'Durée', value: `${minutes} minute(s)`, inline: true },
-      { name: 'Raison', value: raison },
-    );
-    return interaction.reply({ embeds: [embed] });
-  },
+		if (!membre) {
+			return interaction.reply({ content: "❌ Membre introuvable sur ce serveur.", flags: MessageFlags.Ephemeral });
+		}
+		if (!membre.moderatable) {
+			return interaction.reply({
+				content: "❌ Je ne peux pas mute ce membre (rôle trop élevé ou permissions insuffisantes).",
+				flags: MessageFlags.Ephemeral,
+			});
+		}
+
+		await membre.timeout(minutes * 60 * 1000, raison);
+
+		return interaction.reply({
+			embeds: [
+				scpEmbed({
+					title: "🔇 Membre mute",
+					description: `${membre} a été réduit au silence pour **${minutes} minute(s)**.\n**Raison :** ${raison}\n**Modérateur :** ${interaction.user}`,
+					color: "warning",
+				}),
+			],
+		});
+	},
 };

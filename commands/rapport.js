@@ -1,35 +1,49 @@
-const { SlashCommandBuilder } = require('discord.js');
-const { getGuild } = require('../utils/db');
-const { baseEmbed, formatDuration } = require('../utils/helpers');
+// commands/rapport.js
+const { SlashCommandBuilder, MessageFlags } = require("discord.js");
+const { getGuildData } = require("../utils/db");
+const { scpEmbed } = require("../utils/scpEmbed");
+
+function formatDuration(ms) {
+	const totalMinutes = Math.floor(ms / 60000);
+	const hours = Math.floor(totalMinutes / 60);
+	const minutes = totalMinutes % 60;
+	return `${hours}h${minutes.toString().padStart(2, "0")}`;
+}
 
 module.exports = {
-  data: new SlashCommandBuilder()
-    .setName('rapport')
-    .setDescription('Affiche le rapport de service (PDS/FDS) d\'un membre')
-    .addUserOption(o => o.setName('membre').setDescription('Membre concerné (toi par défaut)').setRequired(false)),
-  async execute(interaction) {
-    const target = interaction.options.getUser('membre') || interaction.user;
-    const config = getGuild(interaction.guild.id);
-    const svc = config.service;
+	data: new SlashCommandBuilder()
+		.setName("rapport")
+		.setDescription("Affiche le temps de service d'un membre")
+		.addUserOption((o) => o.setName("membre").setDescription("Membre concerné (vous par défaut)")),
 
-    const history = svc.history[target.id] || [];
-    const active = svc.active[target.id];
-    const totalMs = history.reduce((sum, s) => sum + s.duration, 0);
-    const last5 = history.slice(-5).reverse();
+	async execute(interaction) {
+		const membre = interaction.options.getMember("membre") ?? interaction.member;
+		const data = getGuildData(interaction.guildId);
+		const session = data.service.activeSessions[membre.id];
 
-    const embed = baseEmbed(0x5865f2)
-      .setAuthor({ name: `Rapport de service - ${target.tag}`, iconURL: target.displayAvatarURL() })
-      .addFields(
-        { name: 'Statut', value: active ? `🟢 En service depuis <t:${Math.floor(active.startedAt / 1000)}:R>` : '🔴 Hors service', inline: false },
-        { name: 'Services effectués', value: `${history.length}`, inline: true },
-        { name: 'Temps total', value: formatDuration(totalMs), inline: true },
-      );
+		if (!session) {
+			return interaction.reply({
+				embeds: [
+					scpEmbed({
+						title: "📄 Rapport de service",
+						description: `${membre} n'est actuellement pas en service.`,
+						color: "info",
+					}),
+				],
+				flags: MessageFlags.Ephemeral,
+			});
+		}
 
-    if (last5.length > 0) {
-      const lines = last5.map(s => `<t:${Math.floor(s.start / 1000)}:d> — ${formatDuration(s.duration)}`).join('\n');
-      embed.addFields({ name: 'Derniers services', value: lines });
-    }
-
-    return interaction.reply({ embeds: [embed] });
-  },
+		const duration = Date.now() - session.start;
+		return interaction.reply({
+			embeds: [
+				scpEmbed({
+					title: "📄 Rapport de service",
+					description: `${membre} est en service depuis **${formatDuration(duration)}**.`,
+					color: "info",
+				}),
+			],
+			flags: MessageFlags.Ephemeral,
+		});
+	},
 };

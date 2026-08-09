@@ -1,48 +1,119 @@
-const { SlashCommandBuilder, PermissionFlagsBits, ChannelType } = require('discord.js');
-const { updateGuild } = require('../utils/db');
-const { baseEmbed, safeSetImage } = require('../utils/helpers');
-const { panelRow } = require('../utils/tickets');
+// commands/ticket.js
+const {
+	SlashCommandBuilder,
+	PermissionFlagsBits,
+	MessageFlags,
+	ChannelType,
+	ActionRowBuilder,
+	ButtonBuilder,
+	ButtonStyle,
+} = require("discord.js");
+const { getGuildData, saveGuildData } = require("../utils/db");
+const { isStaff } = require("../utils/permissions");
+const { scpEmbed } = require("../utils/scpEmbed");
 
 module.exports = {
-  data: new SlashCommandBuilder()
-    .setName('ticket')
-    .setDescription('Gère le système de tickets')
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
-    .addSubcommand(sc => sc.setName('config')
-      .setDescription('Configure le système de tickets')
-      .addChannelOption(o => o.setName('categorie').setDescription('Catégorie où créer les tickets').addChannelTypes(ChannelType.GuildCategory).setRequired(true))
-      .addRoleOption(o => o.setName('role_staff').setDescription('Rôle du staff qui voit les tickets').setRequired(true))
-      .addChannelOption(o => o.setName('salon_logs').setDescription('Salon où envoyer les transcripts').addChannelTypes(ChannelType.GuildText).setRequired(false)))
-    .addSubcommand(sc => sc.setName('panel')
-      .setDescription('Envoie le panneau de création de tickets dans ce salon')
-      .addStringOption(o => o.setName('titre').setDescription('Titre du panneau').setRequired(false))
-      .addStringOption(o => o.setName('description').setDescription('Description du panneau').setRequired(false))
-      .addStringOption(o => o.setName('image').setDescription("URL d'image").setRequired(false))),
-  async execute(interaction) {
-    const sub = interaction.options.getSubcommand();
+	data: new SlashCommandBuilder()
+		.setName("ticket")
+		.setDescription("Gestion du système de tickets")
+		.setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+		.addSubcommand((sub) =>
+			sub
+				.setName("config")
+				.setDescription("Configure le système de tickets")
+				.addChannelOption((o) =>
+					o
+						.setName("categorie")
+						.setDescription("Catégorie où créer les salons de ticket")
+						.addChannelTypes(ChannelType.GuildCategory)
+						.setRequired(true)
+				)
+				.addRoleOption((o) => o.setName("role_staff").setDescription("Rôle ayant accès aux tickets").setRequired(true))
+				.addChannelOption((o) =>
+					o
+						.setName("salon_logs")
+						.setDescription("Salon de logs (ouverture/fermeture)")
+						.addChannelTypes(ChannelType.GuildText)
+						.setRequired(false)
+				)
+		)
+		.addSubcommand((sub) =>
+			sub
+				.setName("panel")
+				.setDescription("Envoie le panneau d'ouverture de ticket dans un salon")
+				.addChannelOption((o) =>
+					o
+						.setName("salon")
+						.setDescription("Salon où poster le panneau")
+						.addChannelTypes(ChannelType.GuildText)
+						.setRequired(true)
+				)
+		),
 
-    if (sub === 'config') {
-      const category = interaction.options.getChannel('categorie');
-      const staffRole = interaction.options.getRole('role_staff');
-      const logChannel = interaction.options.getChannel('salon_logs');
-      updateGuild(interaction.guild.id, (g) => {
-        g.tickets.enabled = true;
-        g.tickets.categoryId = category.id;
-        g.tickets.staffRoleId = staffRole.id;
-        if (logChannel) g.tickets.logChannelId = logChannel.id;
-      });
-      return interaction.reply({ content: '✅ Système de tickets configuré. Utilise `/ticket panel` pour poster le panneau.', ephemeral: true });
-    }
+	async execute(interaction) {
+		if (!isStaff(interaction.member)) {
+			return interaction.reply({
+				content: "🔒 Vous n'êtes pas autorisé à utiliser cette commande.",
+				flags: MessageFlags.Ephemeral,
+			});
+		}
 
-    if (sub === 'panel') {
-      const titre = interaction.options.getString('titre') || '🎫 Support';
-      const description = interaction.options.getString('description') || 'Clique sur le bouton ci-dessous pour ouvrir un ticket et contacter le staff.';
-      const image = interaction.options.getString('image');
-      const embed = baseEmbed(0x5865f2).setTitle(titre).setDescription(description);
-      safeSetImage(embed, image);
-      await interaction.channel.send({ embeds: [embed], components: [panelRow()] });
-      updateGuild(interaction.guild.id, (g) => { g.tickets.panelChannelId = interaction.channel.id; });
-      return interaction.reply({ content: '✅ Panneau envoyé.', ephemeral: true });
-    }
-  },
+		const data = getGuildData(interaction.guildId);
+		const sub = interaction.options.getSubcommand();
+
+		if (sub === "config") {
+			const categorie = interaction.options.getChannel("categorie", true);
+			const roleStaff = interaction.options.getRole("role_staff", true);
+			const salonLogs = interaction.options.getChannel("salon_logs");
+
+			data.tickets.categoryId = categorie.id;
+			data.tickets.staffRoleId = roleStaff.id;
+			data.tickets.logChannelId = salonLogs?.id ?? null;
+			saveGuildData(interaction.guildId, data);
+
+			return interaction.reply({
+				embeds: [
+					scpEmbed({
+						title: "🎫 Système de tickets configuré",
+						description: `Catégorie : ${categorie}\nRôle staff : ${roleStaff}\nLogs : ${
+							salonLogs ? salonLogs : "désactivés"
+						}`,
+						color: "success",
+					}),
+				],
+				flags: MessageFlags.Ephemeral,
+			});
+		}
+
+		if (sub === "panel") {
+			if (!data.tickets.categoryId || !data.tickets.staffRoleId) {
+				return interaction.reply({
+					content: "⚠️ Configurez d'abord le système avec `/ticket config`.",
+					flags: MessageFlags.Ephemeral,
+				});
+			}
+
+			const salon = interaction.options.getChannel("salon", true);
+			data.tickets.panelChannelId = salon.id;
+			saveGuildData(interaction.guildId, data);
+
+			const embed = scpEmbed({
+				title: "🎫 Support — Site-11",
+				description:
+					"Besoin d'assistance ou souhaitez signaler un problème ?\nCliquez sur le bouton ci-dessous pour ouvrir un ticket privé avec l'équipe.",
+				color: "default",
+			});
+
+			const row = new ActionRowBuilder().addComponents(
+				new ButtonBuilder().setCustomId("ticket_open").setLabel("Ouvrir un ticket").setEmoji("🎫").setStyle(ButtonStyle.Primary)
+			);
+
+			await salon.send({ embeds: [embed], components: [row] });
+
+			return interaction.reply({
+				content: `✅ Panneau de ticket publié dans ${salon}.`,
+				flags: MessageFlags.Ephemeral,
+			});
+		}
+	},
 };

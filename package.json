@@ -1,7 +1,7 @@
 {
-  "name": "discord-bot-complet",
+  "name": "scp-site11-app",
   "version": "1.0.0",
-  "description": "Bot Discord complet : bienvenue, tickets, reaction-role, anti-raid, sessions, modération",
+  "description": "Bot Discord complet pour la communauté SCP Site-11",
   "main": "index.js",
   "type": "commonjs",
   "scripts": {

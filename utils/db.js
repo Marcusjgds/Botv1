@@ -1,60 +1,82 @@
-const fs = require('fs');
-const path = require('path');
+// utils/db.js
+// Stockage persistant simple : un fichier JSON par serveur dans /data.
+// Suffisant pour la config, les warns, les reaction roles, etc.
 
-const DATA_DIR = path.join(__dirname, '..', 'data');
-const FILE = path.join(DATA_DIR, 'database.json');
+const fs = require("node:fs");
+const path = require("node:path");
 
-if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-
-function load() {
-  if (!fs.existsSync(FILE)) {
-    fs.writeFileSync(FILE, JSON.stringify({ guilds: {} }, null, 2));
-  }
-  try {
-    return JSON.parse(fs.readFileSync(FILE, 'utf8'));
-  } catch (e) {
-    return { guilds: {} };
-  }
+const DATA_DIR = path.join(__dirname, "..", "data");
+if (!fs.existsSync(DATA_DIR)) {
+	fs.mkdirSync(DATA_DIR, { recursive: true });
 }
 
-let db = load();
+const DEFAULT_SCHEMA = {
+	welcome: {
+		enabled: false,
+		joinChannelId: null,
+		joinMessage: "Bienvenue {user} sur **{server}** ! 👋",
+		leaveChannelId: null,
+		leaveMessage: "{user} a quitté le serveur. 👋",
+	},
+	tickets: {
+		categoryId: null,
+		logChannelId: null,
+		staffRoleId: null,
+		panelChannelId: null,
+		counter: 0,
+	},
+	reactionRoles: [], // { messageId, channelId, emoji, roleId }
+	antiraid: {
+		enabled: false,
+		joinThreshold: 5,
+		joinWindowSeconds: 10,
+		action: "kick", // "kick" | "ban"
+		recentJoins: [], // timestamps (non persisté idéalement mais suffisant ici)
+	},
+	sessions: [], // { id, title, description, hostId, date, channelId, messageId, participants: [] }
+	service: {
+		pdsRoleId: null,
+		fdsRoleId: null,
+		logChannelId: null,
+		activeSessions: {}, // userId -> { type: "PDS"|"FDS", start: timestamp }
+	},
+	warns: {}, // userId -> [{ reason, moderatorId, timestamp }]
+};
 
-function save() {
-  fs.writeFileSync(FILE, JSON.stringify(db, null, 2));
+function filePath(guildId) {
+	return path.join(DATA_DIR, `${guildId}.json`);
 }
 
-const defaultGuild = () => ({
-  welcome: { enabled: false, channelId: null, message: 'Bienvenue {user} sur **{server}** ! Nous sommes maintenant {count} membres.', image: null, leaveEnabled: false, leaveChannelId: null, leaveMessage: '{user} a quitté le serveur. Il ne reste plus que {count} membres.' },
-  tickets: { enabled: false, categoryId: null, logChannelId: null, panelChannelId: null, staffRoleId: null, counter: 0, openTickets: {} },
-  reactionRoles: {}, // messageId -> { channelId, roles: { emoji: roleId } }
-  antiraid: { enabled: false, logChannelId: null, maxMessages: 5, interval: 5000, action: 'kick', maxWarns: 3, warns: {} },
-  sessions: [],
-  warns: {}, // userId -> [{ reason, moderatorId, date }]
-  service: {
-    enabled: false,
-    logChannelId: null,
-    staffRoleId: null, // si défini, seul ce rôle peut faire /pds /fds
-    active: {}, // userId -> { startedAt }
-    history: {}, // userId -> [{ start, end, duration }]
-  },
-});
-
-function getGuild(guildId) {
-  if (!db.guilds[guildId]) {
-    db.guilds[guildId] = defaultGuild();
-    save();
-  } else {
-    // merge défauts manquants (mise à jour du bot)
-    db.guilds[guildId] = { ...defaultGuild(), ...db.guilds[guildId] };
-  }
-  return db.guilds[guildId];
+function deepMerge(base, override) {
+	const result = { ...base };
+	for (const key of Object.keys(base)) {
+		if (
+			typeof base[key] === "object" &&
+			base[key] !== null &&
+			!Array.isArray(base[key]) &&
+			override[key]
+		) {
+			result[key] = deepMerge(base[key], override[key]);
+		} else if (override[key] !== undefined) {
+			result[key] = override[key];
+		}
+	}
+	return result;
 }
 
-function updateGuild(guildId, updater) {
-  const g = getGuild(guildId);
-  updater(g);
-  save();
-  return g;
+function getGuildData(guildId) {
+	const file = filePath(guildId);
+	if (!fs.existsSync(file)) {
+		const fresh = JSON.parse(JSON.stringify(DEFAULT_SCHEMA));
+		fs.writeFileSync(file, JSON.stringify(fresh, null, 2));
+		return fresh;
+	}
+	const raw = JSON.parse(fs.readFileSync(file, "utf8"));
+	return deepMerge(DEFAULT_SCHEMA, raw);
 }
 
-module.exports = { getGuild, updateGuild, save, db };
+function saveGuildData(guildId, data) {
+	fs.writeFileSync(filePath(guildId), JSON.stringify(data, null, 2));
+}
+
+module.exports = { getGuildData, saveGuildData };

@@ -1,66 +1,70 @@
-require('dotenv').config();
-const fs = require('fs');
-const path = require('path');
-const http = require('http');
-const { Client, GatewayIntentBits, Partials, Collection, REST, Routes } = require('discord.js');
+// index.js
+require("dotenv").config();
+const fs = require("node:fs");
+const path = require("node:path");
+const { Client, GatewayIntentBits, Partials, Collection, MessageFlags } = require("discord.js");
+const { handleButtonInteraction } = require("./events/buttonInteraction");
+const { registerMemberEvents } = require("./events/memberEvents");
+const { registerReactionEvents } = require("./events/reactionEvents");
 
 const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMembers,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildMessageReactions,
-    GatewayIntentBits.GuildModeration,
-  ],
-  partials: [Partials.Message, Partials.Channel, Partials.Reaction, Partials.GuildMember, Partials.User],
+	intents: [
+		GatewayIntentBits.Guilds,
+		GatewayIntentBits.GuildMembers,
+		GatewayIntentBits.GuildMessages,
+		GatewayIntentBits.GuildMessageReactions,
+		GatewayIntentBits.MessageContent,
+	],
+	partials: [Partials.Message, Partials.Channel, Partials.Reaction, Partials.GuildMember, Partials.User],
 });
 
 client.commands = new Collection();
 
-// Chargement des commandes
-const commandsPath = path.join(__dirname, 'commands');
-for (const file of fs.readdirSync(commandsPath).filter(f => f.endsWith('.js'))) {
-  const command = require(path.join(commandsPath, file));
-  if (command?.data?.name) client.commands.set(command.data.name, command);
+const commandsPath = path.join(__dirname, "commands");
+const commandFiles = fs.readdirSync(commandsPath).filter((file) => file.endsWith(".js"));
+
+for (const file of commandFiles) {
+	const command = require(path.join(commandsPath, file));
+	if (command?.data && command?.execute) {
+		client.commands.set(command.data.name, command);
+	} else {
+		console.warn(`[WARN] La commande dans ${file} est mal formée (data/execute manquant).`);
+	}
 }
 
-// Chargement des events
-const eventsPath = path.join(__dirname, 'events');
-for (const file of fs.readdirSync(eventsPath).filter(f => f.endsWith('.js'))) {
-  const event = require(path.join(eventsPath, file));
-  if (event.once) client.once(event.name, (...args) => event.execute(...args, client));
-  else client.on(event.name, (...args) => event.execute(...args, client));
-}
+registerMemberEvents(client);
+registerReactionEvents(client);
 
-// Enregistrement automatique des commandes slash à chaque démarrage
-// (utile si tu n'as pas Node.js en local pour lancer `npm run deploy` toi-même)
-async function registerCommandsOnBoot() {
-  try {
-    const commandsJSON = [...client.commands.values()].map(c => c.data.toJSON());
-    const rest = new REST().setToken(process.env.DISCORD_TOKEN);
-    if (process.env.GUILD_ID) {
-      await rest.put(Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID), { body: commandsJSON });
-      console.log(`✅ ${commandsJSON.length} commande(s) enregistrée(s) sur le serveur (instantané).`);
-    } else {
-      await rest.put(Routes.applicationCommands(process.env.CLIENT_ID), { body: commandsJSON });
-      console.log(`✅ ${commandsJSON.length} commande(s) enregistrée(s) globalement (jusqu'à 1h de délai).`);
-    }
-  } catch (error) {
-    console.error("❌ Échec de l'enregistrement automatique des commandes :", error);
-  }
-}
+client.once("ready", () => {
+	console.log(`[OK] Connecté en tant que ${client.user.tag}`);
+	console.log(`[OK] ${client.commands.size} commande(s) chargée(s).`);
+});
+
+client.on("interactionCreate", async (interaction) => {
+	try {
+		if (interaction.isChatInputCommand()) {
+			const command = client.commands.get(interaction.commandName);
+			if (!command) return;
+			await command.execute(interaction);
+			return;
+		}
+
+		if (interaction.isButton()) {
+			await handleButtonInteraction(interaction);
+			return;
+		}
+	} catch (error) {
+		console.error(`[ERREUR] Interaction ${interaction.id} :`, error);
+		const errorPayload = {
+			content: "❌ Une erreur est survenue lors de l'exécution de cette action.",
+			flags: MessageFlags.Ephemeral,
+		};
+		if (interaction.replied || interaction.deferred) {
+			await interaction.followUp(errorPayload).catch(() => {});
+		} else {
+			await interaction.reply(errorPayload).catch(() => {});
+		}
+	}
+});
 
 client.login(process.env.DISCORD_TOKEN);
-client.once('ready', () => registerCommandsOnBoot());
-
-// Petit serveur HTTP pour que Render (Web Service) considère le bot "en ligne"
-// Render exige qu'un service Web écoute sur process.env.PORT.
-const PORT = process.env.PORT || 3000;
-http.createServer((req, res) => {
-  res.writeHead(200, { 'Content-Type': 'text/plain' });
-  res.end('Le bot est en ligne.');
-}).listen(PORT, () => console.log(`Serveur HTTP keep-alive sur le port ${PORT}`));
-
-process.on('unhandledRejection', (err) => console.error('Erreur non gérée (promesse) :', err));
-process.on('uncaughtException', (err) => console.error('Erreur non gérée (exception) :', err));

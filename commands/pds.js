@@ -1,42 +1,45 @@
-const { SlashCommandBuilder } = require('discord.js');
-const { getGuild, updateGuild } = require('../utils/db');
-const { baseEmbed } = require('../utils/helpers');
+// commands/pds.js
+const { SlashCommandBuilder, MessageFlags } = require("discord.js");
+const { getGuildData, saveGuildData } = require("../utils/db");
+const { scpEmbed } = require("../utils/scpEmbed");
 
 module.exports = {
-  data: new SlashCommandBuilder()
-    .setName('pds')
-    .setDescription('Prise de service')
-    .addStringOption(o => o.setName('note').setDescription('Note optionnelle (poste, motif...)').setRequired(false)),
-  async execute(interaction) {
-    const config = getGuild(interaction.guild.id);
-    const svc = config.service;
+	data: new SlashCommandBuilder().setName("pds").setDescription("Prise de service"),
 
-    if (!svc.enabled) return interaction.reply({ content: "❌ Le système PDS/FDS n'est pas configuré. Un administrateur doit utiliser `/setup service`.", ephemeral: true });
-    if (svc.staffRoleId && !interaction.member.roles.cache.has(svc.staffRoleId)) {
-      return interaction.reply({ content: "❌ Tu n'as pas le rôle requis pour prendre ton service.", ephemeral: true });
-    }
-    if (svc.active[interaction.user.id]) {
-      return interaction.reply({ content: "❌ Tu es déjà en service. Utilise `/fds` pour le terminer.", ephemeral: true });
-    }
+	async execute(interaction) {
+		const data = getGuildData(interaction.guildId);
+		if (!data.service.pdsRoleId) {
+			return interaction.reply({
+				content: "⚠️ Système de service non configuré (`/setup-service`).",
+				flags: MessageFlags.Ephemeral,
+			});
+		}
 
-    const note = interaction.options.getString('note');
-    const now = Date.now();
+		const userId = interaction.user.id;
+		if (data.service.activeSessions[userId]) {
+			return interaction.reply({
+				content: "⚠️ Vous êtes déjà en service. Utilisez `/fds` pour le terminer.",
+				flags: MessageFlags.Ephemeral,
+			});
+		}
 
-    updateGuild(interaction.guild.id, (g) => {
-      g.service.active[interaction.user.id] = { startedAt: now, note: note || null };
-    });
+		data.service.activeSessions[userId] = { start: Date.now() };
+		saveGuildData(interaction.guildId, data);
 
-    const embed = baseEmbed(0x57f287)
-      .setAuthor({ name: interaction.user.tag, iconURL: interaction.user.displayAvatarURL() })
-      .setTitle('🟢 Prise de service')
-      .addFields({ name: 'Heure', value: `<t:${Math.floor(now / 1000)}:F>` });
-    if (note) embed.addFields({ name: 'Note', value: note });
+		try {
+			await interaction.member.roles.add(data.service.pdsRoleId);
+		} catch {
+			// rôle inaccessible (hiérarchie), on continue quand même
+		}
 
-    await interaction.reply({ embeds: [embed] });
-
-    if (svc.logChannelId) {
-      const logChannel = interaction.guild.channels.cache.get(svc.logChannelId);
-      if (logChannel && logChannel.id !== interaction.channel.id) logChannel.send({ embeds: [embed] }).catch(() => {});
-    }
-  },
+		return interaction.reply({
+			embeds: [
+				scpEmbed({
+					title: "🟢 Prise de service",
+					description: `${interaction.user} a débuté son service.`,
+					color: "success",
+				}),
+			],
+		});
+	},
 };

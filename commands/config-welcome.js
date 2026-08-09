@@ -1,92 +1,138 @@
-const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
-const { updateGuild, getGuild } = require('../utils/db');
-const { replacePlaceholders, baseEmbed, safeSetImage } = require('../utils/helpers');
+// commands/config-welcome.js
+const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags, ChannelType } = require("discord.js");
+const { getGuildData, saveGuildData } = require("../utils/db");
+const { isStaff } = require("../utils/permissions");
+const { scpEmbed } = require("../utils/scpEmbed");
+
+function renderTemplate(template, member, guild) {
+	return template
+		.replaceAll("{user}", `${member}`)
+		.replaceAll("{username}", member.user?.username ?? member.username ?? "membre")
+		.replaceAll("{server}", guild.name)
+		.replaceAll("{membercount}", `${guild.memberCount}`);
+}
 
 module.exports = {
-  data: new SlashCommandBuilder()
-    .setName('config-welcome')
-    .setDescription("Configure les messages de bienvenue et d'au revoir")
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
-    .addSubcommand(sc => sc.setName('set')
-      .setDescription('Configure le message de bienvenue')
-      .addChannelOption(o => o.setName('salon').setDescription('Salon de bienvenue').setRequired(true))
-      .addStringOption(o => o.setName('message').setDescription('Message (placeholders : {user} {username} {server} {count})').setRequired(false))
-      .addAttachmentOption(o => o.setName('image').setDescription("Envoie directement l'image (bannière) depuis tes fichiers").setRequired(false))
-      .addStringOption(o => o.setName('image_url').setDescription("Ou colle une URL d'image au lieu d'un fichier").setRequired(false)))
-    .addSubcommand(sc => sc.setName('leave')
-      .setDescription("Configure le message d'au revoir")
-      .addChannelOption(o => o.setName('salon').setDescription("Salon d'au revoir").setRequired(true))
-      .addStringOption(o => o.setName('message').setDescription('Message (placeholders : {user} {username} {server} {count})').setRequired(false)))
-    .addSubcommand(sc => sc.setName('test').setDescription('Teste le message de bienvenue actuel'))
-    .addSubcommand(sc => sc.setName('disable').setDescription('Désactive bienvenue et/ou au revoir')
-      .addStringOption(o => o.setName('type').setDescription('Quoi désactiver').setRequired(true)
-        .addChoices({ name: 'Bienvenue', value: 'welcome' }, { name: 'Au revoir', value: 'leave' }, { name: 'Les deux', value: 'both' }))),
-  async execute(interaction) {
-    const sub = interaction.options.getSubcommand();
+	data: new SlashCommandBuilder()
+		.setName("config-welcome")
+		.setDescription("Configure les messages de bienvenue et de départ")
+		.setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+		.addSubcommand((sub) =>
+			sub
+				.setName("set")
+				.setDescription("Configure le message de bienvenue (arrivée)")
+				.addChannelOption((o) =>
+					o
+						.setName("salon")
+						.setDescription("Salon où poster le message")
+						.addChannelTypes(ChannelType.GuildText)
+						.setRequired(true)
+				)
+				.addStringOption((o) =>
+					o
+						.setName("message")
+						.setDescription("Message. Variables : {user} {username} {server} {membercount}")
+						.setRequired(true)
+				)
+		)
+		.addSubcommand((sub) =>
+			sub
+				.setName("leave")
+				.setDescription("Configure le message de départ")
+				.addChannelOption((o) =>
+					o
+						.setName("salon")
+						.setDescription("Salon où poster le message")
+						.addChannelTypes(ChannelType.GuildText)
+						.setRequired(true)
+				)
+				.addStringOption((o) =>
+					o
+						.setName("message")
+						.setDescription("Message. Variables : {user} {username} {server} {membercount}")
+						.setRequired(true)
+				)
+		)
+		.addSubcommand((sub) => sub.setName("test").setDescription("Envoie un aperçu du message de bienvenue actuel"))
+		.addSubcommand((sub) => sub.setName("disable").setDescription("Désactive les messages de bienvenue et de départ")),
 
-    if (sub === 'set') {
-      const channel = interaction.options.getChannel('salon');
-      const message = interaction.options.getString('message');
-      const imageAttachment = interaction.options.getAttachment('image');
-      const imageUrl = interaction.options.getString('image_url');
+	async execute(interaction) {
+		if (!isStaff(interaction.member)) {
+			return interaction.reply({
+				content: "🔒 Vous n'êtes pas autorisé à utiliser cette commande.",
+				flags: MessageFlags.Ephemeral,
+			});
+		}
 
-      if (imageAttachment && imageAttachment.contentType && !imageAttachment.contentType.startsWith('image/')) {
-        return interaction.reply({ content: `❌ Le fichier "${imageAttachment.name}" n'est pas une image.`, ephemeral: true });
-      }
+		const data = getGuildData(interaction.guildId);
+		const sub = interaction.options.getSubcommand();
 
-      await interaction.deferReply({ ephemeral: true });
+		if (sub === "set") {
+			const channel = interaction.options.getChannel("salon", true);
+			const message = interaction.options.getString("message", true);
+			data.welcome.joinChannelId = channel.id;
+			data.welcome.joinMessage = message;
+			data.welcome.enabled = true;
+			saveGuildData(interaction.guildId, data);
+			return interaction.reply({
+				embeds: [
+					scpEmbed({
+						title: "👋 Bienvenue configurée",
+						description: `Les nouveaux membres seront accueillis dans ${channel}.`,
+						color: "success",
+					}),
+				],
+				flags: MessageFlags.Ephemeral,
+			});
+		}
 
-      let finalImageUrl = null;
-      if (imageAttachment) {
-        // On republie le fichier dans le salon de bienvenue pour obtenir une URL permanente réutilisable
-        try {
-          const stored = await channel.send({ content: '🖼️ Image de bienvenue enregistrée (ce message sert de stockage, tu peux l\'épingler ou l\'ignorer).', files: [imageAttachment.url] });
-          finalImageUrl = stored.attachments.first()?.url || null;
-        } catch (e) {
-          return interaction.editReply({ content: "❌ Je n'ai pas pu enregistrer l'image (permissions manquantes dans ce salon ?)." });
-        }
-      } else if (imageUrl) {
-        finalImageUrl = imageUrl.trim();
-      }
+		if (sub === "leave") {
+			const channel = interaction.options.getChannel("salon", true);
+			const message = interaction.options.getString("message", true);
+			data.welcome.leaveChannelId = channel.id;
+			data.welcome.leaveMessage = message;
+			saveGuildData(interaction.guildId, data);
+			return interaction.reply({
+				embeds: [
+					scpEmbed({
+						title: "👋 Message de départ configuré",
+						description: `Les départs seront annoncés dans ${channel}.`,
+						color: "success",
+					}),
+				],
+				flags: MessageFlags.Ephemeral,
+			});
+		}
 
-      updateGuild(interaction.guild.id, (g) => {
-        g.welcome.enabled = true;
-        g.welcome.channelId = channel.id;
-        if (message) g.welcome.message = message;
-        if (finalImageUrl) g.welcome.image = finalImageUrl;
-      });
-      return interaction.editReply({ content: `✅ Message de bienvenue configuré dans ${channel}.` });
-    }
+		if (sub === "test") {
+			if (!data.welcome.joinChannelId) {
+				return interaction.reply({
+					content: "⚠️ Aucun message de bienvenue configuré. Utilisez `/config-welcome set` d'abord.",
+					flags: MessageFlags.Ephemeral,
+				});
+			}
+			const rendered = renderTemplate(data.welcome.joinMessage, interaction.member, interaction.guild);
+			return interaction.reply({
+				content: `**Aperçu :**\n${rendered}`,
+				flags: MessageFlags.Ephemeral,
+			});
+		}
 
-    if (sub === 'leave') {
-      const channel = interaction.options.getChannel('salon');
-      const message = interaction.options.getString('message');
-      updateGuild(interaction.guild.id, (g) => {
-        g.welcome.leaveEnabled = true;
-        g.welcome.leaveChannelId = channel.id;
-        if (message) g.welcome.leaveMessage = message;
-      });
-      return interaction.reply({ content: `✅ Message d'au revoir configuré dans ${channel}.`, ephemeral: true });
-    }
+		if (sub === "disable") {
+			data.welcome.enabled = false;
+			saveGuildData(interaction.guildId, data);
+			return interaction.reply({
+				embeds: [
+					scpEmbed({
+						title: "🔕 Bienvenue désactivée",
+						description: "Les messages de bienvenue et de départ sont maintenant désactivés.",
+						color: "warning",
+					}),
+				],
+				flags: MessageFlags.Ephemeral,
+			});
+		}
+	},
 
-    if (sub === 'test') {
-      const config = getGuild(interaction.guild.id);
-      const w = config.welcome;
-      const embed = baseEmbed(0x57f287)
-        .setAuthor({ name: `Bienvenue sur ${interaction.guild.name} !` })
-        .setDescription(replacePlaceholders(w.message, { user: interaction.user, guild: interaction.guild }))
-        .setThumbnail(interaction.user.displayAvatarURL({ size: 256 }));
-      safeSetImage(embed, w.image);
-      return interaction.reply({ embeds: [embed] });
-    }
-
-    if (sub === 'disable') {
-      const type = interaction.options.getString('type');
-      updateGuild(interaction.guild.id, (g) => {
-        if (type === 'welcome' || type === 'both') g.welcome.enabled = false;
-        if (type === 'leave' || type === 'both') g.welcome.leaveEnabled = false;
-      });
-      return interaction.reply({ content: '✅ Configuration mise à jour.', ephemeral: true });
-    }
-  },
+	renderTemplate,
 };

@@ -9,26 +9,39 @@ const COLORS = {
 	info: 0x2f3136,
 };
 
+// N'accepte que de vraies URLs http(s) publiques. Une variable absente, vide,
+// ou un chemin local (file:///...) renvoie undefined pour ne pas faire
+// planter discord.js (qui exige http/https/attachment).
+function getLogoUrl() {
+	const url = process.env.SCP_LOGO_URL;
+	if (url && /^https?:\/\//i.test(url)) {
+		return url;
+	}
+	return undefined;
+}
+
 function scpEmbed({ title, description, color = "default", fields = [], footer } = {}) {
+	const logoUrl = getLogoUrl();
+
 	const embed = new EmbedBuilder()
 		.setColor(COLORS[color] ?? COLORS.default)
 		.setAuthor({
 			name: "FONDATION SCP — SITE-11",
-			iconURL: process.env.SCP_LOGO_URL,
+			iconURL: logoUrl,
 		})
 		.setTimestamp();
 
 	if (title) embed.setTitle(title);
 	if (description) embed.setDescription(description);
 	if (fields.length) embed.addFields(fields);
-	if (process.env.SCP_LOGO_URL) embed.setThumbnail(process.env.SCP_LOGO_URL);
+	if (logoUrl) embed.setThumbnail(logoUrl);
 
 	embed.setFooter({
 		text: footer ?? "Fondation SCP • Site-11",
-		iconURL: process.env.SCP_LOGO_URL,
+		iconURL: logoUrl,
 	});
 
 	return embed;
 }
 
-module.exports = { scpEmbed, COLORS };
+module.exports = { scpEmbed, COLORS, getLogoUrl };

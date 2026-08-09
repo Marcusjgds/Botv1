@@ -2,6 +2,7 @@
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require("discord.js");
 const { ANNOUNCEMENT_TYPES } = require("../utils/announcementTypes");
 const { EmbedBuilder } = require("discord.js");
+const { getLogoUrl } = require("../utils/scpEmbed");
 
 const typeChoices = Object.entries(ANNOUNCEMENT_TYPES).map(([value, cfg]) => ({
 	name: cfg.label,
@@ -12,9 +13,11 @@ function buildAnnouncementEmbed({ type, titre, message, auteur, image }) {
 	const config = ANNOUNCEMENT_TYPES[type] ?? ANNOUNCEMENT_TYPES.annonce;
 	const docRef = `SITE11-${config.classification.slice(0, 2).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`;
 
+	const logoUrl = getLogoUrl();
+
 	const embed = new EmbedBuilder()
 		.setColor(config.color)
-		.setAuthor({ name: "FONDATION SCP — SITE-11", iconURL: process.env.SCP_LOGO_URL })
+		.setAuthor({ name: "FONDATION SCP — SITE-11", iconURL: logoUrl })
 		.setTitle(`${config.emoji} ${titre}`)
 		.setDescription(["```ansi", `[2;31m${config.headerTag}[0m`, "```", message].join("\n"))
 		.addFields(
@@ -22,10 +25,10 @@ function buildAnnouncementEmbed({ type, titre, message, auteur, image }) {
 			{ name: "Document N°", value: `\`${docRef}\``, inline: true },
 			{ name: "Émetteur", value: `${auteur}`, inline: true }
 		)
-		.setFooter({ text: "Fondation SCP • Site-11 — Document généré automatiquement", iconURL: process.env.SCP_LOGO_URL })
+		.setFooter({ text: "Fondation SCP • Site-11 — Document généré automatiquement", iconURL: logoUrl })
 		.setTimestamp();
 
-	if (process.env.SCP_LOGO_URL) embed.setThumbnail(process.env.SCP_LOGO_URL);
+	if (logoUrl) embed.setThumbnail(logoUrl);
 	if (image) embed.setImage(image);
 
 	return embed;

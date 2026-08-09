@@ -42,9 +42,23 @@ module.exports = {
 
 		if (sub === "add") {
 			const messageId = interaction.options.getString("message_id", true);
-			const salon = interaction.options.getChannel("salon", true);
+			const salon = interaction.options.getChannel("salon");
 			const emoji = interaction.options.getString("emoji", true);
 			const role = interaction.options.getRole("role", true);
+
+			if (!salon) {
+				return interaction.reply({
+					embeds: [
+						scpEmbed({
+							title: "⚠️ Commande désynchronisée",
+							description:
+								"L'option `salon` est introuvable côté Discord. Relancez `npm run deploy` puis réessayez.",
+							color: "warning",
+						}),
+					],
+					flags: MessageFlags.Ephemeral,
+				});
+			}
 
 			let targetMessage;
 			try {

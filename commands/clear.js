@@ -1,6 +1,6 @@
 // commands/clear.js
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require("discord.js");
-const { isStaff } = require("../utils/permissions");
+const { isStaff, replyUnauthorized } = require("../utils/permissions");
 const { scpEmbed } = require("../utils/scpEmbed");
 
 module.exports = {
@@ -13,10 +13,7 @@ module.exports = {
 
 	async execute(interaction) {
 		if (!isStaff(interaction.member)) {
-			return interaction.reply({
-				content: "🔒 Vous n'êtes pas autorisé à utiliser cette commande.",
-				flags: MessageFlags.Ephemeral,
-			});
+			return replyUnauthorized(interaction);
 		}
 
 		const nombre = interaction.options.getInteger("nombre", true);
@@ -34,7 +31,7 @@ module.exports = {
 		const deleted = await interaction.channel.bulkDelete(toDelete, true);
 
 		return interaction.editReply({
-			content: `🧹 ${deleted.size} message(s) supprimé(s)${membre ? ` de ${membre}` : ""}.`,
+			embeds: [scpEmbed({ title: "🧹 Nettoyage effectué", description: `${deleted.size} message(s) supprimé(s)${membre ? ` de ${membre}` : ""}.`, color: "success" })],
 		});
 	},
 };

@@ -9,7 +9,7 @@ const {
 	ButtonStyle,
 } = require("discord.js");
 const { getGuildData, saveGuildData } = require("../utils/db");
-const { isStaff } = require("../utils/permissions");
+const { isStaff, replyUnauthorized } = require("../utils/permissions");
 const { scpEmbed } = require("../utils/scpEmbed");
 
 module.exports = {
@@ -52,10 +52,7 @@ module.exports = {
 
 	async execute(interaction) {
 		if (!isStaff(interaction.member)) {
-			return interaction.reply({
-				content: "🔒 Vous n'êtes pas autorisé à utiliser cette commande.",
-				flags: MessageFlags.Ephemeral,
-			});
+			return replyUnauthorized(interaction);
 		}
 
 		const data = getGuildData(interaction.guildId);
@@ -88,7 +85,7 @@ module.exports = {
 		if (sub === "panel") {
 			if (!data.tickets.categoryId || !data.tickets.staffRoleId) {
 				return interaction.reply({
-					content: "⚠️ Configurez d'abord le système avec `/ticket config`.",
+					embeds: [scpEmbed({ title: "⚠️ Non configuré", description: "Configurez d'abord le système avec `/ticket config`.", color: "warning" })],
 					flags: MessageFlags.Ephemeral,
 				});
 			}
@@ -111,7 +108,7 @@ module.exports = {
 			await salon.send({ embeds: [embed], components: [row] });
 
 			return interaction.reply({
-				content: `✅ Panneau de ticket publié dans ${salon}.`,
+				embeds: [scpEmbed({ title: "✅ Panneau publié", description: `Panneau de ticket publié dans ${salon}.`, color: "success" })],
 				flags: MessageFlags.Ephemeral,
 			});
 		}

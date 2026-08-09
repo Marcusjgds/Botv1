@@ -1,7 +1,7 @@
 // commands/antiraid.js
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require("discord.js");
 const { getGuildData, saveGuildData } = require("../utils/db");
-const { isStaff } = require("../utils/permissions");
+const { isStaff, replyUnauthorized } = require("../utils/permissions");
 const { scpEmbed } = require("../utils/scpEmbed");
 
 module.exports = {
@@ -31,10 +31,7 @@ module.exports = {
 
 	async execute(interaction) {
 		if (!isStaff(interaction.member)) {
-			return interaction.reply({
-				content: "🔒 Vous n'êtes pas autorisé à utiliser cette commande.",
-				flags: MessageFlags.Ephemeral,
-			});
+			return replyUnauthorized(interaction);
 		}
 
 		const data = getGuildData(interaction.guildId);

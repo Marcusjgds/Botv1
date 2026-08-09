@@ -1,6 +1,6 @@
 // commands/ban.js
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require("discord.js");
-const { isStaff } = require("../utils/permissions");
+const { isStaff, replyUnauthorized } = require("../utils/permissions");
 const { scpEmbed } = require("../utils/scpEmbed");
 
 module.exports = {
@@ -16,10 +16,7 @@ module.exports = {
 
 	async execute(interaction) {
 		if (!isStaff(interaction.member)) {
-			return interaction.reply({
-				content: "🔒 Vous n'êtes pas autorisé à utiliser cette commande.",
-				flags: MessageFlags.Ephemeral,
-			});
+			return replyUnauthorized(interaction);
 		}
 
 		const utilisateur = interaction.options.getUser("membre", true);
@@ -29,7 +26,7 @@ module.exports = {
 		const membre = interaction.guild.members.cache.get(utilisateur.id);
 		if (membre && !membre.bannable) {
 			return interaction.reply({
-				content: "❌ Je ne peux pas bannir ce membre (rôle trop élevé ou permissions insuffisantes).",
+				embeds: [scpEmbed({ title: "❌ Action impossible", description: "Je ne peux pas bannir ce membre (rôle trop élevé ou permissions insuffisantes).", color: "danger" })],
 				flags: MessageFlags.Ephemeral,
 			});
 		}

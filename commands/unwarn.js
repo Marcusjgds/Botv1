@@ -1,7 +1,7 @@
 // commands/unwarn.js
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require("discord.js");
 const { getGuildData, saveGuildData } = require("../utils/db");
-const { isStaff } = require("../utils/permissions");
+const { isStaff, replyUnauthorized } = require("../utils/permissions");
 const { scpEmbed } = require("../utils/scpEmbed");
 
 module.exports = {
@@ -16,10 +16,7 @@ module.exports = {
 
 	async execute(interaction) {
 		if (!isStaff(interaction.member)) {
-			return interaction.reply({
-				content: "🔒 Vous n'êtes pas autorisé à utiliser cette commande.",
-				flags: MessageFlags.Ephemeral,
-			});
+			return replyUnauthorized(interaction);
 		}
 
 		const membre = interaction.options.getUser("membre", true);
@@ -29,7 +26,7 @@ module.exports = {
 
 		if (warns.length === 0) {
 			return interaction.reply({
-				content: `⚠️ ${membre} n'a aucun avertissement à retirer.`,
+				embeds: [scpEmbed({ title: "⚠️ Aucun avertissement", description: `${membre} n'a aucun avertissement à retirer.`, color: "warning" })],
 				flags: MessageFlags.Ephemeral,
 			});
 		}
@@ -37,7 +34,7 @@ module.exports = {
 		const index = numero ? numero - 1 : warns.length - 1;
 		if (index < 0 || index >= warns.length) {
 			return interaction.reply({
-				content: `❌ Numéro invalide. ${membre} a ${warns.length} avertissement(s).`,
+				embeds: [scpEmbed({ title: "❌ Numéro invalide", description: `${membre} a ${warns.length} avertissement(s).`, color: "danger" })],
 				flags: MessageFlags.Ephemeral,
 			});
 		}

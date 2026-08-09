@@ -1,6 +1,6 @@
 // commands/kick.js
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require("discord.js");
-const { isStaff } = require("../utils/permissions");
+const { isStaff, replyUnauthorized } = require("../utils/permissions");
 const { scpEmbed } = require("../utils/scpEmbed");
 
 module.exports = {
@@ -13,21 +13,18 @@ module.exports = {
 
 	async execute(interaction) {
 		if (!isStaff(interaction.member)) {
-			return interaction.reply({
-				content: "🔒 Vous n'êtes pas autorisé à utiliser cette commande.",
-				flags: MessageFlags.Ephemeral,
-			});
+			return replyUnauthorized(interaction);
 		}
 
 		const membre = interaction.options.getMember("membre");
 		const raison = interaction.options.getString("raison") ?? "Aucune raison fournie";
 
 		if (!membre) {
-			return interaction.reply({ content: "❌ Membre introuvable sur ce serveur.", flags: MessageFlags.Ephemeral });
+			return interaction.reply({ embeds: [scpEmbed({ title: "❌ Introuvable", description: "Membre introuvable sur ce serveur.", color: "danger" })], flags: MessageFlags.Ephemeral });
 		}
 		if (!membre.kickable) {
 			return interaction.reply({
-				content: "❌ Je ne peux pas exclure ce membre (rôle trop élevé ou permissions insuffisantes).",
+				embeds: [scpEmbed({ title: "❌ Action impossible", description: "Je ne peux pas exclure ce membre (rôle trop élevé ou permissions insuffisantes).", color: "danger" })],
 				flags: MessageFlags.Ephemeral,
 			});
 		}

@@ -1,6 +1,6 @@
 // commands/unban.js
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require("discord.js");
-const { isStaff } = require("../utils/permissions");
+const { isStaff, replyUnauthorized } = require("../utils/permissions");
 const { scpEmbed } = require("../utils/scpEmbed");
 
 module.exports = {
@@ -12,10 +12,7 @@ module.exports = {
 
 	async execute(interaction) {
 		if (!isStaff(interaction.member)) {
-			return interaction.reply({
-				content: "🔒 Vous n'êtes pas autorisé à utiliser cette commande.",
-				flags: MessageFlags.Ephemeral,
-			});
+			return replyUnauthorized(interaction);
 		}
 
 		const userId = interaction.options.getString("user_id", true);
@@ -24,7 +21,7 @@ module.exports = {
 			await interaction.guild.members.unban(userId);
 		} catch {
 			return interaction.reply({
-				content: "❌ Impossible de débannir : ID invalide ou utilisateur non banni.",
+				embeds: [scpEmbed({ title: "❌ Échec", description: "Impossible de débannir : ID invalide ou utilisateur non banni.", color: "danger" })],
 				flags: MessageFlags.Ephemeral,
 			});
 		}

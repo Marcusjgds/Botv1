@@ -16,7 +16,7 @@ module.exports = {
 
 		if (warns.length === 0) {
 			return interaction.reply({
-				content: `✅ ${membre} n'a aucun avertissement.`,
+				embeds: [scpEmbed({ title: "✅ Aucun avertissement", description: `${membre} n'a aucun avertissement.`, color: "success" })],
 				flags: MessageFlags.Ephemeral,
 			});
 		}

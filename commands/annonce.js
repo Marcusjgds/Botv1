@@ -59,7 +59,7 @@ module.exports = {
 
 		if (!isAuthorized) {
 			return interaction.reply({
-				content: "🔒 Vous n'êtes pas habilité à publier des documents officiels.",
+				embeds: [new EmbedBuilder().setColor(0x8b1a1a).setDescription("🔒 Vous n'êtes pas habilité à publier des documents officiels.")],
 				flags: MessageFlags.Ephemeral,
 			});
 		}
@@ -80,7 +80,7 @@ module.exports = {
 		});
 
 		return interaction.reply({
-			content: `✅ Document publié dans ${salon}.`,
+			embeds: [new EmbedBuilder().setColor(0x1c6e3d).setDescription(`✅ Document publié dans ${salon}.`)],
 			flags: MessageFlags.Ephemeral,
 		});
 	},

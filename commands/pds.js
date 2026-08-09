@@ -10,7 +10,7 @@ module.exports = {
 		const data = getGuildData(interaction.guildId);
 		if (!data.service.pdsRoleId) {
 			return interaction.reply({
-				content: "⚠️ Système de service non configuré (`/setup-service`).",
+				embeds: [scpEmbed({ title: "⚠️ Non configuré", description: "Système de service non configuré (`/setup-service`).", color: "warning" })],
 				flags: MessageFlags.Ephemeral,
 			});
 		}
@@ -18,7 +18,7 @@ module.exports = {
 		const userId = interaction.user.id;
 		if (data.service.activeSessions[userId]) {
 			return interaction.reply({
-				content: "⚠️ Vous êtes déjà en service. Utilisez `/fds` pour le terminer.",
+				embeds: [scpEmbed({ title: "⚠️ Déjà en service", description: "Vous êtes déjà en service. Utilisez `/fds` pour le terminer.", color: "warning" })],
 				flags: MessageFlags.Ephemeral,
 			});
 		}

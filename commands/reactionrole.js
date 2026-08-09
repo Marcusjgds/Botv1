@@ -1,7 +1,7 @@
 // commands/reactionrole.js
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags, ChannelType } = require("discord.js");
 const { getGuildData, saveGuildData } = require("../utils/db");
-const { isStaff } = require("../utils/permissions");
+const { isStaff, replyUnauthorized } = require("../utils/permissions");
 const { scpEmbed } = require("../utils/scpEmbed");
 
 module.exports = {
@@ -34,10 +34,7 @@ module.exports = {
 
 	async execute(interaction) {
 		if (!isStaff(interaction.member)) {
-			return interaction.reply({
-				content: "🔒 Vous n'êtes pas autorisé à utiliser cette commande.",
-				flags: MessageFlags.Ephemeral,
-			});
+			return replyUnauthorized(interaction);
 		}
 
 		const data = getGuildData(interaction.guildId);
@@ -54,7 +51,7 @@ module.exports = {
 				targetMessage = await salon.messages.fetch(messageId);
 			} catch {
 				return interaction.reply({
-					content: "❌ Message introuvable dans ce salon. Vérifiez l'ID et le salon.",
+					embeds: [scpEmbed({ title: "❌ Introuvable", description: "Message introuvable dans ce salon. Vérifiez l'ID et le salon.", color: "danger" })],
 					flags: MessageFlags.Ephemeral,
 				});
 			}
@@ -63,7 +60,7 @@ module.exports = {
 				await targetMessage.react(emoji);
 			} catch {
 				return interaction.reply({
-					content: "❌ Impossible de réagir avec cet emoji (invalide ou inaccessible pour le bot).",
+					embeds: [scpEmbed({ title: "❌ Échec", description: "Impossible de réagir avec cet emoji (invalide ou inaccessible pour le bot).", color: "danger" })],
 					flags: MessageFlags.Ephemeral,
 				});
 			}
@@ -98,7 +95,7 @@ module.exports = {
 
 			if (data.reactionRoles.length === before) {
 				return interaction.reply({
-					content: "⚠️ Aucune association trouvée pour ce message/emoji.",
+					embeds: [scpEmbed({ title: "⚠️ Introuvable", description: "Aucune association trouvée pour ce message/emoji.", color: "warning" })],
 					flags: MessageFlags.Ephemeral,
 				});
 			}

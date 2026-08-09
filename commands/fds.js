@@ -20,7 +20,7 @@ module.exports = {
 
 		if (!session) {
 			return interaction.reply({
-				content: "⚠️ Vous n'êtes pas en service. Utilisez `/pds` pour commencer.",
+				embeds: [scpEmbed({ title: "⚠️ Pas en service", description: "Vous n'êtes pas en service. Utilisez `/pds` pour commencer.", color: "warning" })],
 				flags: MessageFlags.Ephemeral,
 			});
 		}

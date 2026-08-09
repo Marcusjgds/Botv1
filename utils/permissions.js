@@ -1,5 +1,6 @@
 // utils/permissions.js
-const { PermissionFlagsBits } = require("discord.js");
+const { PermissionFlagsBits, EmbedBuilder, MessageFlags } = require("discord.js");
+const { COLORS } = require("./scpEmbed");
 
 /**
  * Un membre est considéré "staff" s'il a la permission ManageGuild
@@ -20,4 +21,12 @@ function isStaff(member) {
 	return member.roles.cache.some((role) => staffRoleIds.includes(role.id));
 }
 
-module.exports = { isStaff };
+/** Réponse standardisée (embed) quand l'accès est refusé. */
+function replyUnauthorized(interaction) {
+	const embed = new EmbedBuilder()
+		.setColor(COLORS.danger)
+		.setDescription("🔒 Vous n'êtes pas autorisé à utiliser cette commande.");
+	return interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
+}
+
+module.exports = { isStaff, replyUnauthorized };

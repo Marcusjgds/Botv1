@@ -1,7 +1,7 @@
 // commands/config-welcome.js
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags, ChannelType } = require("discord.js");
 const { getGuildData, saveGuildData } = require("../utils/db");
-const { isStaff } = require("../utils/permissions");
+const { isStaff, replyUnauthorized } = require("../utils/permissions");
 const { scpEmbed } = require("../utils/scpEmbed");
 
 function renderTemplate(template, member, guild) {
@@ -58,10 +58,7 @@ module.exports = {
 
 	async execute(interaction) {
 		if (!isStaff(interaction.member)) {
-			return interaction.reply({
-				content: "🔒 Vous n'êtes pas autorisé à utiliser cette commande.",
-				flags: MessageFlags.Ephemeral,
-			});
+			return replyUnauthorized(interaction);
 		}
 
 		const data = getGuildData(interaction.guildId);
@@ -107,13 +104,13 @@ module.exports = {
 		if (sub === "test") {
 			if (!data.welcome.joinChannelId) {
 				return interaction.reply({
-					content: "⚠️ Aucun message de bienvenue configuré. Utilisez `/config-welcome set` d'abord.",
+					embeds: [scpEmbed({ title: "⚠️ Non configuré", description: "Aucun message de bienvenue configuré. Utilisez `/config-welcome set` d'abord.", color: "warning" })],
 					flags: MessageFlags.Ephemeral,
 				});
 			}
 			const rendered = renderTemplate(data.welcome.joinMessage, interaction.member, interaction.guild);
 			return interaction.reply({
-				content: `**Aperçu :**\n${rendered}`,
+				embeds: [scpEmbed({ title: "👋 Aperçu du message de bienvenue", description: rendered, color: "info" })],
 				flags: MessageFlags.Ephemeral,
 			});
 		}

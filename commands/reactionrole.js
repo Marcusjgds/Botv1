@@ -1,129 +1,52 @@
-// commands/reactionrole.js
-const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags, ChannelType } = require("discord.js");
-const { getGuildData, saveGuildData } = require("../utils/db");
-const { isStaff, replyUnauthorized } = require("../utils/permissions");
-const { scpEmbed } = require("../utils/scpEmbed");
+const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
+const { updateGuild } = require('../utils/db');
 
 module.exports = {
-	data: new SlashCommandBuilder()
-		.setName("reactionrole")
-		.setDescription("Gère les rôles à réaction")
-		.setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles)
-		.addSubcommand((sub) =>
-			sub
-				.setName("add")
-				.setDescription("Associe une réaction à un rôle sur un message")
-				.addStringOption((o) => o.setName("message_id").setDescription("ID du message").setRequired(true))
-				.addChannelOption((o) =>
-					o
-						.setName("salon")
-						.setDescription("Salon contenant le message")
-						.addChannelTypes(ChannelType.GuildText)
-						.setRequired(true)
-				)
-				.addStringOption((o) => o.setName("emoji").setDescription("Emoji déclencheur").setRequired(true))
-				.addRoleOption((o) => o.setName("role").setDescription("Rôle à attribuer").setRequired(true))
-		)
-		.addSubcommand((sub) =>
-			sub
-				.setName("remove")
-				.setDescription("Retire une association réaction ➜ rôle")
-				.addStringOption((o) => o.setName("message_id").setDescription("ID du message").setRequired(true))
-				.addStringOption((o) => o.setName("emoji").setDescription("Emoji à retirer").setRequired(true))
-		),
+  data: new SlashCommandBuilder()
+    .setName('reactionrole')
+    .setDescription('Gère les rôles par réaction')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles)
+    .addSubcommand(sc => sc.setName('add')
+      .setDescription('Ajoute une association emoji -> rôle sur un message')
+      .addStringOption(o => o.setName('message_id').setDescription('ID du message').setRequired(true))
+      .addStringOption(o => o.setName('emoji').setDescription('Emoji (unicode ou emoji du serveur)').setRequired(true))
+      .addRoleOption(o => o.setName('role').setDescription('Rôle à donner').setRequired(true)))
+    .addSubcommand(sc => sc.setName('remove')
+      .setDescription('Retire une association emoji -> rôle')
+      .addStringOption(o => o.setName('message_id').setDescription('ID du message').setRequired(true))
+      .addStringOption(o => o.setName('emoji').setDescription('Emoji concerné').setRequired(true))),
+  async execute(interaction) {
+    const sub = interaction.options.getSubcommand();
+    const messageId = interaction.options.getString('message_id');
 
-	async execute(interaction) {
-		if (!isStaff(interaction.member)) {
-			return replyUnauthorized(interaction);
-		}
+    // Recherche du message dans les salons textuels visibles (rapide : cache puis fetch dans le salon courant)
+    let message = interaction.channel.messages.cache.get(messageId);
+    if (!message) {
+      try { message = await interaction.channel.messages.fetch(messageId); }
+      catch (e) { return interaction.reply({ content: "❌ Message introuvable dans ce salon. Exécute la commande dans le salon contenant le message.", ephemeral: true }); }
+    }
 
-		const data = getGuildData(interaction.guildId);
-		const sub = interaction.options.getSubcommand();
+    if (sub === 'add') {
+      const emoji = interaction.options.getString('emoji');
+      const role = interaction.options.getRole('role');
 
-		if (sub === "add") {
-			const messageId = interaction.options.getString("message_id", true);
-			const salon = interaction.options.getChannel("salon");
-			const emoji = interaction.options.getString("emoji", true);
-			const role = interaction.options.getRole("role", true);
+      try { await message.react(emoji); }
+      catch (e) { return interaction.reply({ content: "❌ Emoji invalide ou le bot n'a pas la permission de réagir.", ephemeral: true }); }
 
-			if (!salon) {
-				return interaction.reply({
-					embeds: [
-						scpEmbed({
-							title: "⚠️ Commande désynchronisée",
-							description:
-								"L'option `salon` est introuvable côté Discord. Relancez `npm run deploy` puis réessayez.",
-							color: "warning",
-						}),
-					],
-					flags: MessageFlags.Ephemeral,
-				});
-			}
+      updateGuild(interaction.guild.id, (g) => {
+        if (!g.reactionRoles[messageId]) g.reactionRoles[messageId] = { channelId: interaction.channel.id, roles: {} };
+        g.reactionRoles[messageId].roles[emoji] = role.id;
+      });
 
-			let targetMessage;
-			try {
-				targetMessage = await salon.messages.fetch(messageId);
-			} catch {
-				return interaction.reply({
-					embeds: [scpEmbed({ title: "❌ Introuvable", description: "Message introuvable dans ce salon. Vérifiez l'ID et le salon.", color: "danger" })],
-					flags: MessageFlags.Ephemeral,
-				});
-			}
+      return interaction.reply({ content: `✅ Réagir avec ${emoji} donnera le rôle ${role}.`, ephemeral: true });
+    }
 
-			try {
-				await targetMessage.react(emoji);
-			} catch {
-				return interaction.reply({
-					embeds: [scpEmbed({ title: "❌ Échec", description: "Impossible de réagir avec cet emoji (invalide ou inaccessible pour le bot).", color: "danger" })],
-					flags: MessageFlags.Ephemeral,
-				});
-			}
-
-			data.reactionRoles = data.reactionRoles.filter(
-				(rr) => !(rr.messageId === messageId && rr.emoji === emoji)
-			);
-			data.reactionRoles.push({ messageId, channelId: salon.id, emoji, roleId: role.id });
-			saveGuildData(interaction.guildId, data);
-
-			return interaction.reply({
-				embeds: [
-					scpEmbed({
-						title: "🎭 Reaction Role ajouté",
-						description: `Réagir avec ${emoji} sur [ce message](${targetMessage.url}) attribue le rôle ${role}.`,
-						color: "success",
-					}),
-				],
-				flags: MessageFlags.Ephemeral,
-			});
-		}
-
-		if (sub === "remove") {
-			const messageId = interaction.options.getString("message_id", true);
-			const emoji = interaction.options.getString("emoji", true);
-
-			const before = data.reactionRoles.length;
-			data.reactionRoles = data.reactionRoles.filter(
-				(rr) => !(rr.messageId === messageId && rr.emoji === emoji)
-			);
-			saveGuildData(interaction.guildId, data);
-
-			if (data.reactionRoles.length === before) {
-				return interaction.reply({
-					embeds: [scpEmbed({ title: "⚠️ Introuvable", description: "Aucune association trouvée pour ce message/emoji.", color: "warning" })],
-					flags: MessageFlags.Ephemeral,
-				});
-			}
-
-			return interaction.reply({
-				embeds: [
-					scpEmbed({
-						title: "🎭 Reaction Role retiré",
-						description: `L'association ${emoji} a été supprimée.`,
-						color: "warning",
-					}),
-				],
-				flags: MessageFlags.Ephemeral,
-			});
-		}
-	},
+    if (sub === 'remove') {
+      const emoji = interaction.options.getString('emoji');
+      updateGuild(interaction.guild.id, (g) => {
+        if (g.reactionRoles[messageId]) delete g.reactionRoles[messageId].roles[emoji];
+      });
+      return interaction.reply({ content: '✅ Association supprimée.', ephemeral: true });
+    }
+  },
 };

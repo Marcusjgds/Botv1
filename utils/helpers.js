@@ -7,6 +7,16 @@ function isStaff(member, guildConfig) {
   return false;
 }
 
+// Vérifie que le modérateur peut agir sur la cible : il faut que son rôle le plus haut
+// soit strictement au-dessus de celui de la cible (comme Discord le fait nativement pour kick/ban).
+// Les administrateurs et le propriétaire du serveur passent toujours, quel que soit leur rôle.
+function canModerate(moderatorMember, targetMember) {
+  if (moderatorMember.id === targetMember.guild.ownerId) return true;
+  if (moderatorMember.permissions.has(PermissionFlagsBits.Administrator)) return true;
+  if (targetMember.id === targetMember.guild.ownerId) return false;
+  return moderatorMember.roles.highest.position > targetMember.roles.highest.position;
+}
+
 function replacePlaceholders(text, { user, guild }) {
   if (!text) return text;
   return text
@@ -45,4 +55,4 @@ function safeSetThumbnail(embed, url) {
   return embed;
 }
 
-module.exports = { isStaff, replacePlaceholders, baseEmbed, formatDuration, isValidImageUrl, safeSetImage, safeSetThumbnail };
+module.exports = { isStaff, canModerate, replacePlaceholders, baseEmbed, formatDuration, isValidImageUrl, safeSetImage, safeSetThumbnail };

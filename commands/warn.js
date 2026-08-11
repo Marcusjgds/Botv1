@@ -1,54 +1,37 @@
-// commands/warn.js
-const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require("discord.js");
-const { getGuildData, saveGuildData } = require("../utils/db");
-const { isStaff, replyUnauthorized } = require("../utils/permissions");
-const { scpEmbed } = require("../utils/scpEmbed");
+const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
+const { updateGuild } = require('../utils/db');
+const { baseEmbed, canModerate } = require('../utils/helpers');
 
 module.exports = {
-	data: new SlashCommandBuilder()
-		.setName("warn")
-		.setDescription("Avertit un membre")
-		.setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
-		.addUserOption((o) => o.setName("membre").setDescription("Membre à avertir").setRequired(true))
-		.addStringOption((o) => o.setName("raison").setDescription("Raison de l'avertissement").setRequired(true)),
+  data: new SlashCommandBuilder()
+    .setName('warn')
+    .setDescription('Avertit un membre')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
+    .addUserOption(o => o.setName('membre').setDescription('Membre à avertir').setRequired(true))
+    .addStringOption(o => o.setName('raison').setDescription("Raison de l'avertissement").setRequired(true)),
+  async execute(interaction) {
+    const user = interaction.options.getUser('membre');
+    const raison = interaction.options.getString('raison');
 
-	async execute(interaction) {
-		if (!isStaff(interaction.member)) {
-			return replyUnauthorized(interaction);
-		}
+    const targetMember = await interaction.guild.members.fetch(user.id).catch(() => null);
+    if (targetMember && !canModerate(interaction.member, targetMember)) {
+      return interaction.reply({ content: "❌ Tu ne peux pas avertir ce membre : son rôle est égal ou supérieur au tien.", ephemeral: true });
+    }
 
-		const membre = interaction.options.getUser("membre", true);
-		const raison = interaction.options.getString("raison", true);
-		const data = getGuildData(interaction.guildId);
+    const updated = updateGuild(interaction.guild.id, (g) => {
+      if (!g.warns[user.id]) g.warns[user.id] = [];
+      g.warns[user.id].push({ reason: raison, moderatorId: interaction.user.id, date: Date.now() });
+    });
 
-		if (!data.warns[membre.id]) data.warns[membre.id] = [];
-		data.warns[membre.id].push({
-			reason: raison,
-			moderatorId: interaction.user.id,
-			timestamp: Date.now(),
-		});
-		saveGuildData(interaction.guildId, data);
-
-		const embed = scpEmbed({
-			title: "⚠️ Avertissement",
-			description: `${membre} a été averti.\n**Raison :** ${raison}\n**Total :** ${data.warns[membre.id].length} avertissement(s)`,
-			color: "warning",
-		});
-
-		await interaction.reply({ embeds: [embed] });
-
-		try {
-			await membre.send({
-				embeds: [
-					scpEmbed({
-						title: "⚠️ Vous avez reçu un avertissement",
-						description: `Sur **${interaction.guild.name}**\n**Raison :** ${raison}`,
-						color: "warning",
-					}),
-				],
-			});
-		} catch {
-			// DM fermés, on ignore
-		}
-	},
+    const count = updated.warns[user.id].length;
+    const embed = baseEmbed(0xfee75c)
+      .setTitle('⚠️ Avertissement')
+      .setDescription(`${user} a été averti.`)
+      .addFields(
+        { name: 'Raison', value: raison },
+        { name: 'Total avertissements', value: `${count}` },
+      );
+    await interaction.reply({ embeds: [embed] });
+    user.send(`Tu as reçu un avertissement sur **${interaction.guild.name}**.\nRaison : ${raison}`).catch(() => {});
+  },
 };

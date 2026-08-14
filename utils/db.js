@@ -7,18 +7,21 @@ const FILE = path.join(DATA_DIR, 'database.json');
 
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
-let db = { guilds: {} };
-let collection = null;
+let db = { guilds: {}, leaderboard: {} };
+let guildsCollection = null;
+let leaderboardCollection = null;
 let usingMongo = false;
 
 function loadFromFile() {
   if (!fs.existsSync(FILE)) {
-    fs.writeFileSync(FILE, JSON.stringify({ guilds: {} }, null, 2));
+    fs.writeFileSync(FILE, JSON.stringify({ guilds: {}, leaderboard: {} }, null, 2));
   }
   try {
-    return JSON.parse(fs.readFileSync(FILE, 'utf8'));
+    const parsed = JSON.parse(fs.readFileSync(FILE, 'utf8'));
+    if (!parsed.leaderboard) parsed.leaderboard = {};
+    return parsed;
   } catch (e) {
-    return { guilds: {} };
+    return { guilds: {}, leaderboard: {} };
   }
 }
 
@@ -41,16 +44,24 @@ async function init() {
     const client = new MongoClient(uri);
     await client.connect();
     const dbName = process.env.MONGODB_DB_NAME || 'discordbot';
-    collection = client.db(dbName).collection('guilds');
+    guildsCollection = client.db(dbName).collection('guilds');
+    leaderboardCollection = client.db(dbName).collection('leaderboard');
     usingMongo = true;
 
-    const docs = await collection.find({}).toArray();
-    db = { guilds: {} };
+    const docs = await guildsCollection.find({}).toArray();
+    db = { guilds: {}, leaderboard: {} };
     for (const doc of docs) {
       const { _id, ...rest } = doc;
       db.guilds[_id] = rest;
     }
-    console.log(`✅ Connecté à MongoDB Atlas — ${docs.length} serveur(s) chargé(s). Les données sont maintenant persistantes.`);
+
+    const players = await leaderboardCollection.find({}).toArray();
+    for (const doc of players) {
+      const { _id, ...rest } = doc;
+      db.leaderboard[_id] = rest;
+    }
+
+    console.log(`✅ Connecté à MongoDB Atlas — ${docs.length} serveur(s) et ${players.length} joueur(s) chargés. Les données sont maintenant persistantes.`);
   } catch (e) {
     console.error('❌ Connexion MongoDB échouée, bascule sur le stockage local :', e.message);
     db = loadFromFile();
@@ -58,10 +69,20 @@ async function init() {
 }
 
 function persistGuild(guildId) {
-  if (usingMongo && collection) {
-    collection
+  if (usingMongo && guildsCollection) {
+    guildsCollection
       .replaceOne({ _id: guildId }, { _id: guildId, ...db.guilds[guildId] }, { upsert: true })
-      .catch((e) => console.error('❌ Erreur de sauvegarde MongoDB :', e.message));
+      .catch((e) => console.error('❌ Erreur de sauvegarde MongoDB (guild) :', e.message));
+  } else {
+    saveToFile();
+  }
+}
+
+function persistPlayer(playerId) {
+  if (usingMongo && leaderboardCollection) {
+    leaderboardCollection
+      .replaceOne({ _id: String(playerId) }, { _id: String(playerId), ...db.leaderboard[playerId] }, { upsert: true })
+      .catch((e) => console.error('❌ Erreur de sauvegarde MongoDB (joueur) :', e.message));
   } else {
     saveToFile();
   }
@@ -101,4 +122,33 @@ function updateGuild(guildId, updater) {
   return g;
 }
 
-module.exports = { getGuild, updateGuild, init, db };
+// --- Leaderboard XP Roblox (global, pas lié à un serveur Discord précis) ---
+
+function getLeaderboard() {
+  if (!db.leaderboard) db.leaderboard = {};
+  return db.leaderboard;
+}
+
+// Met à jour l'XP d'un joueur Roblox. Si isReset=true, l'ancienne valeur est archivée dans l'historique.
+function upsertPlayerXP(playerId, username, xp, isReset) {
+  const id = String(playerId);
+  if (!db.leaderboard[id]) {
+    db.leaderboard[id] = { username, xp: 0, history: [], updatedAt: Date.now() };
+  }
+  const player = db.leaderboard[id];
+  player.username = username || player.username;
+
+  if (isReset) {
+    player.history.push({ xpAvant: player.xp, date: Date.now() });
+    if (player.history.length > 50) player.history.shift();
+    player.xp = xp;
+  } else {
+    player.xp = xp;
+  }
+  player.updatedAt = Date.now();
+
+  persistPlayer(id);
+  return player;
+}
+
+module.exports = { getGuild, updateGuild, getLeaderboard, upsertPlayerXP, init, db };

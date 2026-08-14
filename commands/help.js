@@ -13,6 +13,7 @@ module.exports = {
         { name: '🛡️ Anti-Raid', value: '`/antiraid config` `/antiraid status`' },
         { name: '📅 Sessions', value: '`/session create`' },
         { name: '🕒 Service (PDS/FDS)', value: '`/setup service` `/pds` `/fds` `/rapport`' },
+        { name: '📊 XP Roblox', value: '`/tableau-des-scores` `/xp-historique`' },
         { name: '🔨 Modération', value: '`/warn` `/warns` `/unwarn` `/kick` `/ban` `/unban` `/mute` `/unmute` `/clear`' },
       )
       .setFooter({ text: 'Bot développé pour toi 🚀' });

@@ -66,13 +66,49 @@ async function start() {
 client.once('ready', () => registerCommandsOnBoot());
 start();
 
-// Petit serveur HTTP pour que Render (Web Service) considère le bot "en ligne"
-// Render exige qu'un service Web écoute sur process.env.PORT.
+// Petit serveur HTTP : keep-alive pour Render + API pour recevoir l'XP depuis le jeu Roblox.
+// Le jeu envoie une requête POST /api/xp avec le header x-api-key = ROBLOX_API_KEY (à définir sur Render).
 const PORT = process.env.PORT || 3000;
+
 http.createServer((req, res) => {
+  if (req.method === 'POST' && req.url === '/api/xp') {
+    const apiKey = process.env.ROBLOX_API_KEY;
+    if (!apiKey) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: 'ROBLOX_API_KEY non configuré sur le bot.' }));
+    }
+    if (req.headers['x-api-key'] !== apiKey) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: 'Clé API invalide.' }));
+    }
+
+    let body = '';
+    req.on('data', (chunk) => {
+      body += chunk;
+      if (body.length > 1e6) req.destroy(); // sécurité anti-abus
+    });
+    req.on('end', () => {
+      try {
+        const data = JSON.parse(body);
+        const { playerId, username, xp, isReset } = data;
+        if (playerId === undefined || xp === undefined) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'playerId et xp sont requis.' }));
+        }
+        database.upsertPlayerXP(playerId, username, Number(xp), !!isReset);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true }));
+      } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'JSON invalide.' }));
+      }
+    });
+    return;
+  }
+
   res.writeHead(200, { 'Content-Type': 'text/plain' });
   res.end('Le bot est en ligne.');
-}).listen(PORT, () => console.log(`Serveur HTTP keep-alive sur le port ${PORT}`));
+}).listen(PORT, () => console.log(`Serveur HTTP (keep-alive + API XP) sur le port ${PORT}`));
 
 process.on('unhandledRejection', (err) => console.error('Erreur non gérée (promesse) :', err));
 process.on('uncaughtException', (err) => console.error('Erreur non gérée (exception) :', err));
